@@ -1,0 +1,21 @@
+Update 0.1 
+Original code problems:
+
+os._exit(0) — hard kills the process with no cleanup, threads left dangling
+API_KEY = "../api_key.txt" — the path was being passed as the key itself, not its contents
+temp.wav — hardcoded filename, would break with multiple instances and left behind on crash
+Whisper and pyttsx3 called directly on the same thread — pyttsx3 is not thread-safe, caused silent crashes
+No logging — only print(), no timestamps or error levels
+All code in loose functions with global state everywhere — no structure, hard to extend
+buffer.clear() happened before checking if transcription returned anything useful — silent audio got cleared and lost
+No system prompt sent to GPT — the model had no context that it was a voice assistant, responses were too long to speak
+BLOCK_DURATION = 1 with no minimum length check — Whisper was being called on tiny 1-second clips constantly, very inefficient
+No error handling on the OpenAI call — any network blip would crash the thread silently
+
+
+Updates made across this push : 
+
+1 — refactor: split into Config, Speaker, AIClient, AudioPipeline classes. Added structured logging, load_api_key(), system prompt, min audio length check, tempfile instead of temp.wav, graceful shutdown via sys.exit, dtype="int16" on the audio stream
+2 — Windows tempfile fix: NamedTemporaryFile holds an exclusive lock on Windows so Whisper couldn't reopen the file by name. Switched to mkstemp + os.close(fd) to release the handle immediately before writing
+3 — transcriber rewrite: stripped out OpenAI/TTS entirely, focused purely on mic → Whisper → text → saved file. Added a tkinter GUI with live transcription display, blinking recording dot, and saved filename shown after stopping. Model loads in a background thread so the window doesn't freeze
+4 — ffmpeg fix: Whisper calls ffmpeg internally when given a file path, but ffmpeg wasn't installed. Fixed by passing audio as a float32 numpy array directly — audio.flatten().astype(np.float32) / 32768.0 — which Whisper accepts natively, no ffmpeg or temp files needed at all
